@@ -86,7 +86,7 @@
         .context-menu-item { padding: 8px 16px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 10px; color: #d1d5db; transition: background 0.1s; }
         .context-menu-item:hover { background: var(--accent-hover); color: white; }
 
-        .asset-item { min-width: 90px; height: 90px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; cursor: grab; padding: 8px; border-radius: 6px; border: 1px solid transparent; background: #21252b; transition: all 0.2s; }
+        .asset-item { min-width: 90px; height: 90px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; cursor: pointer; padding: 8px; border-radius: 6px; border: 1px solid transparent; background: #21252b; transition: all 0.2s; }
         .asset-item:hover { background: #282c34; border-color: #5c6370; transform: translateY(-2px); }
         
         .tab-btn { padding: 8px 16px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; color: #7d8799; font-weight: 500; transition: color 0.2s; }
@@ -303,9 +303,16 @@
 
         <!-- Bottom Panel: Assets -->
         <div id="bottom-panel">
-            <div class="flex items-center gap-2 px-2 pt-2 bg-[#181a1f] border-b border-gray-700">
-                <div class="tab-btn active" onclick="Engine.switchAssetTab('models', this)"><i data-lucide="cuboid" class="w-4 h-4 inline mr-1"></i> Hazır Modeller</div>
-                <div class="tab-btn" onclick="Engine.switchAssetTab('materials', this)"><i data-lucide="palette" class="w-4 h-4 inline mr-1"></i> Materyaller</div>
+            <div class="flex items-center justify-between px-2 pt-2 bg-[#181a1f] border-b border-gray-700">
+                <div class="flex items-center gap-2">
+                    <div class="tab-btn active" onclick="Engine.switchAssetTab('models', this)"><i data-lucide="cuboid" class="w-4 h-4 inline mr-1"></i> Hazır Modeller</div>
+                    <div class="tab-btn" onclick="Engine.switchAssetTab('materials', this)"><i data-lucide="palette" class="w-4 h-4 inline mr-1"></i> Materyaller & Dokular</div>
+                    <div class="tab-btn" onclick="Engine.switchAssetTab('audio', this)"><i data-lucide="music" class="w-4 h-4 inline mr-1"></i> Sesler</div>
+                </div>
+                <button class="bg-green-600 hover:bg-green-500 text-white text-[11px] font-bold px-3 py-1.5 rounded shadow flex items-center" onclick="document.getElementById('asset-importer').click()">
+                    <i data-lucide="upload" class="w-3 h-3 mr-1"></i> İçe Aktar
+                </button>
+                <input type="file" id="asset-importer" accept=".glb,.gltf,.mp3,.png,.jpg,.jpeg" class="hidden" onchange="Engine.handleAssetImport(event)">
             </div>
             <div class="flex-1 p-4 flex gap-4 overflow-x-auto bg-[#0f1115] relative" id="asset-browser">
                 <!-- Assets injected via JS -->
@@ -318,6 +325,7 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { TransformControls } from 'three/addons/controls/TransformControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import * as CANNON from 'cannon-es';
 
         lucide.createIcons();
@@ -345,7 +353,7 @@
         };
 
         // ==========================================
-        // 2. BLUEPRINT INTERPRETER SYSTEM - GERÇEK ÇALIŞAN VERSİYON
+        // 2. BLUEPRINT INTERPRETER SYSTEM 
         // ==========================================
         window.BlueprintInterpreter = class {
             constructor(graphData, entity) {
@@ -383,11 +391,9 @@
             }
 
             evaluateDataPort(nodeId, portId) {
-                // Önce bu porta bir bağlantı var mı bak (Mesela dışardan gelen Vec3 node'u)
                 const link = this.links.find(l => l.toNode === nodeId && l.toPort === portId);
                 if (link) return this.evaluateNodeData(this.nodes[link.fromNode], link.fromPort);
                 
-                // Eğer bağlantı yoksa node'un kendi içindeki input değerini (data) kullan
                 const node = this.nodes[nodeId];
                 if(node && node.data) {
                     if (portId === 'vec') return { isVec3: true, x: parseFloat(node.data.x||0), y: parseFloat(node.data.y||0), z: parseFloat(node.data.z||0) };
@@ -409,7 +415,6 @@
                             this.entity.mesh.position.x += vec.x * dt;
                             this.entity.mesh.position.y += vec.y * dt;
                             this.entity.mesh.position.z += vec.z * dt;
-                            // FİZİK VARSA ORAYA IŞINLA
                             if(this.entity.body) this.entity.body.position.copy(this.entity.mesh.position);
                         }
                         return 'execOut';
@@ -456,29 +461,22 @@
 
             evaluateNodeData(node, outputPortId) {
                 switch(node.type) {
-                    case 'InputKey':
-                        return window.EngineInput.getKey(node.data.key || 'KeyW');
-                    case 'Vec3':
-                        return { isVec3:true, x: parseFloat(node.data.x||0), y: parseFloat(node.data.y||0), z: parseFloat(node.data.z||0) };
-                    case 'MakeVec3':
-                        return { isVec3:true, x: parseFloat(this.evaluateDataPort(node.id, 'x')), y: parseFloat(this.evaluateDataPort(node.id, 'y')), z: parseFloat(this.evaluateDataPort(node.id, 'z')) };
+                    case 'InputKey': return window.EngineInput.getKey(node.data.key || 'KeyW');
+                    case 'Vec3': return { isVec3:true, x: parseFloat(node.data.x||0), y: parseFloat(node.data.y||0), z: parseFloat(node.data.z||0) };
+                    case 'MakeVec3': return { isVec3:true, x: parseFloat(this.evaluateDataPort(node.id, 'x')), y: parseFloat(this.evaluateDataPort(node.id, 'y')), z: parseFloat(this.evaluateDataPort(node.id, 'z')) };
                     case 'MathAdd': {
-                        const a = this.evaluateDataPort(node.id, 'a');
-                        const b = this.evaluateDataPort(node.id, 'b');
+                        const a = this.evaluateDataPort(node.id, 'a'); const b = this.evaluateDataPort(node.id, 'b');
                         if(a && b && a.isVec3 && b.isVec3) return { isVec3:true, x:a.x+b.x, y:a.y+b.y, z:a.z+b.z };
                         if(!isNaN(a) && !isNaN(b)) return parseFloat(a) + parseFloat(b);
                         return 0;
                     }
                     case 'MathMul': {
-                        const a = this.evaluateDataPort(node.id, 'a');
-                        const b = this.evaluateDataPort(node.id, 'b'); 
+                        const a = this.evaluateDataPort(node.id, 'a'); const b = this.evaluateDataPort(node.id, 'b'); 
                         if(a && a.isVec3 && !isNaN(b)) return { isVec3:true, x:a.x*b, y:a.y*b, z:a.z*b };
                         if(!isNaN(a) && !isNaN(b)) return parseFloat(a) * parseFloat(b);
                         return 0;
                     }
-                    case 'EventUpdate':
-                        if(outputPortId === 'dt') return window.EngineTime.deltaTime;
-                        return 0;
+                    case 'EventUpdate': if(outputPortId === 'dt') return window.EngineTime.deltaTime; return 0;
                 }
                 return (node && node.data) ? (node.data[outputPortId] || 0) : 0;
             }
@@ -684,10 +682,21 @@
             static orbitControls; static transformControls;
             static entities = {}; static selectedId = null; static isPlaying = false;
             static activeScriptInstances = []; static initialStates = {};
+            static playingAudios = [];
             
             static assets = {
-                materials: { 'mat_gray': { id:'mat_gray', name: 'Standart Gri', color: 0x888888, type: 'material' }, 'mat_red': { id:'mat_red', name: 'Kırmızı', color: 0xe74c3c, type: 'material' } },
-                models: { 'mod_cube': { id:'mod_cube', name: 'Küp', type: 'model', primitive: 'cube' }, 'mod_sphere': { id:'mod_sphere', name: 'Küre', type: 'model', primitive: 'sphere' } }
+                // 7 Farklı Temel Materyal
+                materials: { 
+                    'mat_white': { id:'mat_white', name: 'Beyaz', color: 0xffffff, type: 'material' },
+                    'mat_red': { id:'mat_red', name: 'Kırmızı', color: 0xff4444, type: 'material' },
+                    'mat_green': { id:'mat_green', name: 'Yeşil', color: 0x44ff44, type: 'material' },
+                    'mat_blue': { id:'mat_blue', name: 'Mavi', color: 0x4444ff, type: 'material' },
+                    'mat_yellow': { id:'mat_yellow', name: 'Sarı', color: 0xffff44, type: 'material' },
+                    'mat_cyan': { id:'mat_cyan', name: 'Turkuaz', color: 0x44ffff, type: 'material' },
+                    'mat_magenta': { id:'mat_magenta', name: 'Mor', color: 0xff44ff, type: 'material' }
+                },
+                models: { 'mod_cube': { id:'mod_cube', name: 'Küp', type: 'model', primitive: 'cube' }, 'mod_sphere': { id:'mod_sphere', name: 'Küre', type: 'model', primitive: 'sphere' } },
+                audio: {}
             };
             static activeTab = 'models';
             
@@ -700,11 +709,107 @@
                     EngineInput.init(); 
                     this.initEngine(); 
                     NodeSystem.init(); 
-                    
-                    // Scripts Global Access Point
                     window.Engine.Input = window.EngineInput;
                     window.Engine.Time = window.EngineTime;
                 }; 
+            }
+
+            // --- YENİ TIKLAMA VE UYGULAMA SİSTEMİ ---
+            static handleAssetClick(type, id) {
+                if (type === 'material') {
+                    if (!this.selectedId) {
+                        console.warn("Lütfen materyali uygulamak için önce Hiyerarşiden veya Sahneden bir obje seçin.");
+                        return;
+                    }
+                    const ent = this.entities[this.selectedId];
+                    if (['light', 'camera'].includes(ent.type)) return;
+                    
+                    const matAsset = this.assets.materials[id];
+                    ent.materialId = id; // Export için kaydediyoruz
+                    ent.mesh.traverse(c => { 
+                        if(c.isMesh) {
+                            if(matAsset.textureData) {
+                                // PNG/JPG Texture Uygulama
+                                const tex = new THREE.TextureLoader().load(matAsset.textureData);
+                                c.material = new THREE.MeshStandardMaterial({map: tex, color: 0xffffff});
+                            } else {
+                                c.material = new THREE.MeshStandardMaterial({color: matAsset.color}); 
+                            }
+                        }
+                    });
+                    console.log(`Materyal (${matAsset.name}) başarıyla ${ent.name} objesine uygulandı.`);
+                } 
+                else if (type === 'model') {
+                    const modelAsset = this.assets.models[id];
+                    if(modelAsset.primitive === 'glb') {
+                        const loader = new GLTFLoader();
+                        loader.load(modelAsset.data, (gltf) => {
+                            const mesh = gltf.scene;
+                            mesh.position.set(0, 1, 0); 
+                            const ent = Engine.createEntity(modelAsset.name, 'glb', mesh);
+                            ent.assetId = id; 
+                        });
+                    } else {
+                        Engine.addPrimitive(modelAsset.primitive);
+                    }
+                    console.log(`Model (${modelAsset.name}) sahneye başarıyla eklendi.`);
+                } 
+                else if (type === 'audio') {
+                    if (!this.selectedId) {
+                        console.warn("Lütfen sesi eklemek için önce Hiyerarşiden veya Sahneden bir obje seçin.");
+                        return;
+                    }
+                    const ent = this.entities[this.selectedId];
+                    const audioAsset = this.assets.audio[id];
+                    
+                    ent.audios.push({
+                        id: 'aud_' + Math.random().toString(36).substr(2, 6),
+                        assetId: id,
+                        name: audioAsset.name,
+                        volume: 1.0,
+                        loop: false,
+                        autoplay: true
+                    });
+                    
+                    this.buildInspector(ent);
+                    console.log(`Ses dosyası (${audioAsset.name}), [${ent.name}] objesine başarıyla eklendi.`);
+                }
+            }
+
+            static handleAssetImport(e) {
+                const file = e.target.files[0];
+                if(!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const dataUrl = ev.target.result;
+                    const id = 'ast_' + Math.random().toString(36).substr(2,9);
+                    
+                    if(file.name.toLowerCase().match(/\.(glb|gltf)$/)) {
+                        Engine.assets.models[id] = { id, name: file.name, type: 'model', primitive: 'glb', data: dataUrl };
+                        Engine.switchAssetTab('models', document.querySelectorAll('.tab-btn')[0]);
+                    } 
+                    else if(file.name.toLowerCase().match(/\.mp3$/)) {
+                        Engine.assets.audio[id] = { id, name: file.name, type: 'audio', data: dataUrl };
+                        Engine.switchAssetTab('audio', document.querySelectorAll('.tab-btn')[2]);
+                    }
+                    else if(file.name.toLowerCase().match(/\.(png|jpg|jpeg)$/)) {
+                        Engine.assets.materials[id] = { id, name: file.name, type: 'material', textureData: dataUrl };
+                        Engine.switchAssetTab('materials', document.querySelectorAll('.tab-btn')[1]);
+                    }
+                    e.target.value = ""; // Reset
+                };
+                reader.readAsDataURL(file);
+            }
+
+            // Audio Helper Functions for Inspector
+            static updateAudio(index, prop, value) {
+                if(!this.selectedId) return;
+                this.entities[this.selectedId].audios[index][prop] = (prop === 'volume') ? parseFloat(value) : value;
+            }
+            static deleteAudio(index) {
+                if(!this.selectedId) return;
+                this.entities[this.selectedId].audios.splice(index, 1);
+                this.buildInspector(this.entities[this.selectedId]);
             }
 
             static initTerminal() {
@@ -740,7 +845,6 @@
 
             static initEngine() {
                 const container = document.getElementById('canvas-container');
-                
                 this.scene = new THREE.Scene();
                 this.scene.background = new THREE.Color(0x111317);
                 this.scene.fog = new THREE.Fog(0x111317, 20, 100);
@@ -766,8 +870,8 @@
                 this.scene.add(this.transformControls);
 
                 this.physicsWorld = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.81, 0) });
-
                 this.raycaster = new THREE.Raycaster(); this.mouse = new THREE.Vector2();
+                
                 container.addEventListener('pointerdown', this.onPointerDown.bind(this));
                 container.addEventListener('contextmenu', this.onContextMenu.bind(this));
                 document.addEventListener('click', e => { if(!e.target.closest('.context-menu')) document.getElementById('context-menu').style.display='none'; });
@@ -783,7 +887,6 @@
                 });
 
                 this.initTerminal();
-
                 this.cmJs = CodeMirror.fromTextArea(document.getElementById('script-textarea-js'), { mode: "javascript", theme: "darcula", lineNumbers: true, matchBrackets: true, indentUnit: 4 });
                 this.cmHtml = CodeMirror.fromTextArea(document.getElementById('script-textarea-html'), { mode: "htmlmixed", theme: "darcula", lineNumbers: true, matchBrackets: true, indentUnit: 4 });
                 this.cmCss = CodeMirror.fromTextArea(document.getElementById('script-textarea-css'), { mode: "css", theme: "darcula", lineNumbers: true, matchBrackets: true, indentUnit: 4 });
@@ -800,7 +903,8 @@
                     mesh.castShadow = true; mesh.receiveShadow = true;
                     mesh.userData.entityId = id; this.scene.add(mesh);
                 }
-                this.entities[id] = { id, name, type, mesh, body: null, scripts: [], props: {} };
+                // audios dizisi eklendi
+                this.entities[id] = { id, name, type, mesh, body: null, scripts: [], audios: [], props: {}, materialId: null };
                 this.updateHierarchy(); this.selectObject(id);
                 return this.entities[id];
             }
@@ -852,6 +956,7 @@
                     div.className = `hierarchy-item ${this.selectedId === ent.id ? 'selected' : ''}`;
                     div.onclick = () => this.selectObject(ent.id);
                     let icon = 'box'; if(ent.type==='light') icon='sun'; else if(ent.type==='camera') icon='video';
+                    else if(ent.assetId) icon='component';
                     div.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4"></i> <span class="truncate">${ent.name}</span>`;
                     list.appendChild(div);
                 });
@@ -908,17 +1013,44 @@
                         <div class="flex gap-2"><span class="w-8 text-gray-500 font-mono">SCL</span><input type="number" step="0.1" id="i_sx" class="engine-input py-1" value="${s.x.toFixed(2)}" onchange="Engine.updateTransform()"><input type="number" step="0.1" id="i_sy" class="engine-input py-1" value="${s.y.toFixed(2)}" onchange="Engine.updateTransform()"><input type="number" step="0.1" id="i_sz" class="engine-input py-1" value="${s.z.toFixed(2)}" onchange="Engine.updateTransform()"></div>
                     </div>`;
 
-                if(['cube','sphere'].includes(ent.type)) {
+                if(['cube','sphere', 'glb'].includes(ent.type) || ent.assetId) {
                     html += `<div class="bg-[#111317] p-3 rounded border border-gray-700 text-xs mb-3 shadow-inner">
                         <div class="font-bold text-red-400 mb-2 flex items-center gap-1"><i data-lucide="box" class="w-3 h-3"></i> Fizik (RigidBody)</div>
                         ${ent.body ? `<div class="flex justify-between items-center mb-2 text-green-400 font-semibold">Aktif <span class="text-gray-400 text-[10px]">Kütle: ${ent.body.mass}</span></div><button class="w-full bg-red-600 hover:bg-red-500 py-1.5 rounded text-white transition-colors" onclick="Engine.removePhysics()">Fiziği Kaldır</button>` : `<button class="w-full bg-purple-600 hover:bg-purple-500 py-1.5 rounded text-white transition-colors font-bold" onclick="Engine.addPhysics('${ent.type}')">Fizik Ekle (Düşer)</button>`}
                     </div>`;
                 }
+                
+                // AUDIO (SES) COMPONENTS UI
+                html += `
+                    <div class="border-t border-gray-700 pt-3 text-xs mb-3">
+                        <div class="flex justify-between items-center mb-2 font-bold text-pink-400">
+                            <span class="flex items-center gap-1"><i data-lucide="music" class="w-4 h-4"></i> Ses Bileşenleri</span>
+                        </div>
+                        <div class="space-y-2">
+                            ${ent.audios.map((aud, i) => `
+                                <div class="bg-[#181a1f] p-2 rounded border border-gray-600">
+                                    <div class="flex justify-between items-center mb-1 text-gray-300 font-semibold text-[11px]">
+                                        <span class="truncate" title="${aud.name}">${aud.name}</span>
+                                        <i data-lucide="trash-2" class="w-3 h-3 text-red-400 cursor-pointer" onclick="Engine.deleteAudio(${i})"></i>
+                                    </div>
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="w-12 text-[10px] text-gray-500">Ses/Vol</span>
+                                        <input type="range" min="0" max="1" step="0.1" value="${aud.volume}" class="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer" onchange="Engine.updateAudio(${i}, 'volume', this.value)">
+                                    </div>
+                                    <div class="flex justify-between items-center text-[10px] mt-2">
+                                        <label class="flex items-center gap-1 cursor-pointer text-gray-400 hover:text-white"><input type="checkbox" ${aud.loop ? 'checked' : ''} onchange="Engine.updateAudio(${i}, 'loop', this.checked)"> Döngü (Loop)</label>
+                                        <label class="flex items-center gap-1 cursor-pointer text-gray-400 hover:text-white"><input type="checkbox" ${aud.autoplay ? 'checked' : ''} onchange="Engine.updateAudio(${i}, 'autoplay', this.checked)"> Oto-Başlat</label>
+                                    </div>
+                                </div>
+                            `).join('')}
+                            ${ent.audios.length === 0 ? '<div class="text-gray-600 text-center py-2 text-[10px]">Ses eklenmedi. Eklemek için MP3\'e tıklayın.</div>' : ''}
+                        </div>
+                    </div>`;
 
                 html += `
                     <div class="border-t border-gray-700 pt-3 text-xs">
                         <div class="flex justify-between items-center mb-2 font-bold text-green-400">
-                            <span class="flex items-center gap-1"><i data-lucide="code" class="w-4 h-4"></i> Bileşenler (Scripts)</span>
+                            <span class="flex items-center gap-1"><i data-lucide="code" class="w-4 h-4"></i> Kod (Scripts)</span>
                             <div class="relative group">
                                 <button class="bg-blue-600 hover:bg-blue-500 px-2 py-0.5 rounded text-white transition-colors">+</button>
                                 <div class="hidden group-hover:block absolute right-0 top-full mt-1 bg-[#21252b] border border-gray-600 rounded shadow-xl w-36 py-1 z-50">
@@ -937,7 +1069,7 @@
                                     </div>
                                 </div>
                             `).join('')}
-                            ${ent.scripts.length === 0 ? '<div class="text-gray-600 text-center py-2">Henüz script eklenmedi.</div>' : ''}
+                            ${ent.scripts.length === 0 ? '<div class="text-gray-600 text-center py-2 text-[10px]">Henüz script eklenmedi.</div>' : ''}
                         </div>
                     </div>`;
 
@@ -955,7 +1087,7 @@
 
             static addPhysics(type) {
                 if(!this.selectedId) return; const ent = this.entities[this.selectedId];
-                let shape = type === 'cube' ? new CANNON.Box(new CANNON.Vec3(0.5*ent.mesh.scale.x,0.5*ent.mesh.scale.y,0.5*ent.mesh.scale.z)) : new CANNON.Sphere(0.5*ent.mesh.scale.x);
+                let shape = type === 'sphere' ? new CANNON.Sphere(0.5*ent.mesh.scale.x) : new CANNON.Box(new CANNON.Vec3(0.5*ent.mesh.scale.x,0.5*ent.mesh.scale.y,0.5*ent.mesh.scale.z));
                 const body = new CANNON.Body({ mass: 1, position: new CANNON.Vec3().copy(ent.mesh.position), shape });
                 body.quaternion.copy(ent.mesh.quaternion); this.physicsWorld.addBody(body); ent.body = body; this.buildInspector(ent);
             }
@@ -1010,9 +1142,8 @@
                     document.getElementById('js-editor-modal').classList.remove('hidden');
                     this.switchCodeTab('js');
 
-                    // GERÇEKTEN ÇALIŞAN ÖRNEK KOD (PlayCanvas Standartı)
-                    const defaultJS = `class KobilBehavior {\n    start() {\n        console.log("Oyun başladı! Sahnede aktif objem: " + this.entity.name);\n    }\n\n    update(dt) {\n        const hiz = 5;\n        \n        // W Tuşu ile ileri git\n        if (Engine.Input.getKey('KeyW')) {\n            if (this.body) this.body.velocity.z = -hiz; // Objede FİZİK varsa hızı değiştir\n            else this.mesh.position.z -= hiz * dt;      // Objede FİZİK yoksa mesh'i kaydır\n        }\n        \n        // S Tuşu ile geri git\n        if (Engine.Input.getKey('KeyS')) {\n            if (this.body) this.body.velocity.z = hiz;\n            else this.mesh.position.z += hiz * dt;\n        }\n        \n        // Sürekli olarak kendi etrafında dönmesini istersen alttaki satırı aktif et:\n        // this.mesh.rotation.y += 2 * dt;\n    }\n}\nreturn KobilBehavior;`;
-                    const defaultHTML = `<!-- UI Öğelerini buraya yazabilirsiniz -->\n<!-- Örnek: -->\n<!-- <button id="ui-btn" class="pro-btn">Tıkla!</button> -->`;
+                    const defaultJS = `class KobilBehavior {\n    start() {\n        console.log("Oyun başladı! Sahnede aktif objem: " + this.entity.name);\n    }\n\n    update(dt) {\n        const hiz = 5;\n        \n        // W Tuşu ile ileri git\n        if (Engine.Input.getKey('KeyW')) {\n            if (this.body) this.body.velocity.z = -hiz; // Objede FİZİK varsa hızı değiştir\n            else this.mesh.position.z -= hiz * dt;      // Objede FİZİK yoksa mesh'i kaydır\n        }\n        \n        // S Tuşu ile geri git\n        if (Engine.Input.getKey('KeyS')) {\n            if (this.body) this.body.velocity.z = hiz;\n            else this.mesh.position.z += hiz * dt;\n        }\n    }\n}\nreturn KobilBehavior;`;
+                    const defaultHTML = `<!-- UI Öğelerini buraya yazabilirsiniz -->\n<!-- <button id="ui-btn" class="pro-btn">Tıkla!</button> -->`;
                     const defaultCSS = `/* Stil kodlarınız */\n.pro-btn {\n    position: absolute;\n    top: 20px;\n    left: 20px;\n    padding: 10px 20px;\n    background: #3b82f6;\n    color: white;\n    border: none;\n    border-radius: 5px;\n    cursor: pointer;\n}`;
 
                     let scriptData = (index !== null) ? this.entities[this.selectedId].scripts[index] : null;
@@ -1038,7 +1169,6 @@
                 const cssCode = this.cmCss.getValue();
                 
                 try { 
-                    // Sözdizimi hatası (SyntaxError) kontrolü
                     const wrapper = `return (function(Engine, THREE, CANNON){ ${jsCode} });`;
                     new Function(wrapper); 
                 } catch(e) { 
@@ -1080,8 +1210,6 @@
             static togglePlay() {
                 this.isPlaying = !this.isPlaying;
                 const btnPlay = document.getElementById('btn-play'); const btnStop = document.getElementById('btn-stop');
-                
-                // Klavye girişlerini alabilmesi için canvas'a odaklan
                 document.getElementById('canvas-container').focus();
 
                 if (this.isPlaying) {
@@ -1089,21 +1217,20 @@
                     btnPlay.classList.add('hidden'); btnStop.classList.remove('hidden');
                     this.transformControls.detach();
                     this.initialStates = {}; this.activeScriptInstances = [];
+                    this.playingAudios = []; // Ses referansları
                     
                     let mainCamObj = Object.values(this.entities).find(e => e.type === 'camera');
                     this.activeCamera = mainCamObj ? mainCamObj.mesh.children.find(c=>c.isPerspectiveCamera) : this.camera;
 
-                    // PlayCanvas Style UI Layer Injection
+                    // UI Layer Injection
                     let uiContainer = document.createElement('div');
                     uiContainer.id = 'kobil-ui-layer';
                     uiContainer.style.position = 'absolute';
                     uiContainer.style.inset = '0';
                     uiContainer.style.pointerEvents = 'none'; 
                     uiContainer.style.zIndex = '20';
-                    
                     let styleEl = document.createElement('style');
                     styleEl.id = 'kobil-ui-styles';
-                    
                     document.getElementById('canvas-container').appendChild(uiContainer);
                     document.head.appendChild(styleEl);
 
@@ -1119,33 +1246,34 @@
                     uiContainer.innerHTML = allHTML;
                     styleEl.innerHTML = `#kobil-ui-layer > * { pointer-events: auto; } \n` + allCSS;
 
-                    // Script ve Fizik İlk Durumları
+                    // Script ve Fizik ve SES İlk Durumları
                     Object.values(this.entities).forEach(ent => {
-                        // Objelerin oyuna başladığı orijinal konumunu kaydet (Durdurunca geri dönmek için)
                         this.initialStates[ent.id] = { pos: ent.mesh.position.clone(), rot: ent.mesh.quaternion.clone() };
                         
+                        // SESLERİ BAŞLAT
+                        ent.audios.forEach(aud => {
+                            const asset = this.assets.audio[aud.assetId];
+                            if(asset && asset.data) {
+                                const htmlAudio = new Audio(asset.data);
+                                htmlAudio.volume = aud.volume;
+                                htmlAudio.loop = aud.loop;
+                                if(aud.autoplay) htmlAudio.play().catch(e=>console.warn("Otomatik oynatma tarayıcı tarafından engellendi. Oyuna tıklayın.", e));
+                                this.playingAudios.push(htmlAudio);
+                            }
+                        });
+
                         ent.scripts.forEach(sc => {
                             try {
                                 if(sc.type === 'js' || sc.type === 'code') {
                                     const codeToRun = sc.js || sc.code;
-                                    
-                                    // JIT (Anında Derlenen) Fonksiyon Sarmalayıcısı - İzole Edilmiş SandBox
                                     const wrapper = `return (function(Engine, THREE, CANNON) { ${codeToRun} });`;
                                     const ScriptFactory = new Function(wrapper)();
-                                    
                                     const ScriptClass = ScriptFactory(window.Engine, THREE, CANNON);
                                     const inst = new ScriptClass();
                                     
-                                    // Ortam Bağlantıları (Context Integration)
-                                    inst.entity = ent; 
-                                    inst.mesh = ent.mesh; 
-                                    inst.body = ent.body;
-                                    
-                                    if(inst.start) {
-                                        try { inst.start(); } catch(err) { console.error(`[Start Hatası - ${ent.name}]:`, err.message); }
-                                    }
+                                    inst.entity = ent; inst.mesh = ent.mesh; inst.body = ent.body;
+                                    if(inst.start) { try { inst.start(); } catch(err) { console.error(`[Start Hatası - ${ent.name}]:`, err.message); } }
                                     this.activeScriptInstances.push(inst);
-                                    
                                 } else if(sc.type === 'blueprint') {
                                     const bpInst = new window.BlueprintInterpreter(sc.bpData, ent);
                                     bpInst.start();
@@ -1159,16 +1287,16 @@
                     btnPlay.classList.remove('hidden'); btnStop.classList.add('hidden');
                     this.activeCamera = this.camera; 
                     
-                    // Aktif script instances'larda 'destroy' fonksiyonu varsa tetikle (bellek sızıntısını önler)
-                    this.activeScriptInstances.forEach(inst => {
-                        if(inst.destroy) { try { inst.destroy(); } catch(e){} }
-                    });
+                    // Sesi Durdur
+                    this.playingAudios.forEach(a => { a.pause(); a.currentTime = 0; });
+                    this.playingAudios = [];
+
+                    this.activeScriptInstances.forEach(inst => { if(inst.destroy) { try { inst.destroy(); } catch(e){} } });
                     this.activeScriptInstances = [];
                     
                     const uiLayer = document.getElementById('kobil-ui-layer'); if(uiLayer) uiLayer.remove();
                     const uiStyles = document.getElementById('kobil-ui-styles'); if(uiStyles) uiStyles.remove();
 
-                    // Obje durumlarını sıfırla (Fizikler dahil)
                     Object.values(this.entities).forEach(ent => {
                         const state = this.initialStates[ent.id];
                         if (state) {
@@ -1191,7 +1319,6 @@
                 this.renderer.setSize(c.clientWidth, c.clientHeight);
             }
 
-            // Main Loop (Tick) - PlayCanvas Standartında Optimizasyon
             static animate() {
                 requestAnimationFrame(this.animate.bind(this));
                 window.EngineTime.update();
@@ -1200,24 +1327,18 @@
                 document.getElementById('fps-counter').innerText = `FPS: ${Math.round(1/dt)}`;
 
                 if (this.isPlaying) {
-                    // ADIM 1: FİZİK HESAPLANIR
                     this.physicsWorld.step(1/60, dt, 3);
                     Object.values(this.entities).forEach(ent => {
-                        // Eğer dinamik fizik ise pozisyonu kopyala
                         if (ent.body && ent.body.mass > 0) {
                             ent.mesh.position.copy(ent.body.position); 
                             ent.mesh.quaternion.copy(ent.body.quaternion);
                         }
                     });
                     
-                    // ADIM 2: SCRIPTLER ÇALIŞTIRILIR (Bu, fiziğin üzerine yazarak anlık tepkiyi sağlar)
                     this.activeScriptInstances.forEach(inst => {
-                        if(inst.update) {
-                            try { inst.update(dt); } catch(e){ console.error(`[Update Hatası]:`, e.message); }
-                        }
+                        if(inst.update) { try { inst.update(dt); } catch(e){ console.error(`[Update Hatası]:`, e.message); } }
                     });
 
-                    // ADIM 3: EĞER KINEMATİK BİR OBJE MESH ÜZERİNDEN HAREKET ETTİRİLDİYSE FİZİĞİ GÜNCELLE
                     Object.values(this.entities).forEach(ent => {
                         if (ent.body && ent.body.mass === 0) {
                             ent.body.position.copy(ent.mesh.position); 
@@ -1229,7 +1350,6 @@
                     this.orbitControls.update();
                 }
 
-                // Editör görünüm çizgilerini oyun oynanırken gizle
                 this.scene.children.forEach(c => { if(c.isGridHelper || c.type==='TransformControls') c.visible = !this.isPlaying; });
                 Object.values(this.entities).forEach(e=>{ if(['light','camera'].includes(e.type)) e.mesh.children[0].visible = !this.isPlaying; });
 
@@ -1243,9 +1363,16 @@
             }
             static refreshAssetBrowser() {
                 const c = document.getElementById('asset-browser'); c.innerHTML = '';
-                Object.values(this.assets[this.activeTab]).forEach(ast => {
-                    let iconHtml = this.activeTab === 'materials' ? `<div class="w-12 h-12 rounded-full border-2 border-gray-500 shadow-inner" style="background-color: #${ast.color.toString(16).padStart(6,'0')}"></div>` : `<i data-lucide="cuboid" class="w-10 h-10 text-blue-400"></i>`;
-                    c.innerHTML += `<div class="asset-item" draggable="true" ondragstart="event.dataTransfer.setData('type', '${ast.type}'); event.dataTransfer.setData('id', '${ast.id}');">${iconHtml}<span class="text-[11px] text-center w-full truncate text-gray-300">${ast.name}</span></div>`;
+                Object.values(this.assets[this.activeTab] || {}).forEach(ast => {
+                    let iconHtml = '';
+                    if(this.activeTab === 'materials') {
+                        if(ast.textureData) iconHtml = `<img src="${ast.textureData}" class="w-10 h-10 object-cover rounded border-2 border-gray-500 shadow-inner">`;
+                        else iconHtml = `<div class="w-10 h-10 rounded-full border-2 border-gray-500 shadow-inner" style="background-color: #${ast.color.toString(16).padStart(6,'0')}"></div>`;
+                    }
+                    else if(this.activeTab === 'audio') iconHtml = `<i data-lucide="music" class="w-10 h-10 text-pink-400"></i>`;
+                    else iconHtml = `<i data-lucide="cuboid" class="w-10 h-10 text-blue-400"></i>`;
+                    
+                    c.innerHTML += `<div class="asset-item" onclick="Engine.handleAssetClick('${ast.type}', '${ast.id}')">${iconHtml}<span class="text-[11px] text-center w-full truncate text-gray-300" title="${ast.name}">${ast.name}</span></div>`;
                 });
                 lucide.createIcons({root: c});
             }
@@ -1256,36 +1383,234 @@
                 document.querySelectorAll('.tab-btn')[1].click(); 
             }
 
+            // Gerçek Cihaza İndirme Sistemi (Standalone Player Injector + JOLLYSON SAĞLAMLIĞI)
             static exportBuild() {
-                alert("HTML Build sistemi hazırlanıyor. Gerçek JS kodları ve Blueprint yorumlayıcısı, motor koduna entegre edilecek tam bağımsız bir index.html oluşturacaktır.");
+                const btn = document.querySelector('button[onclick="Engine.exportBuild()"]');
+                const oldText = btn.innerHTML;
+                btn.innerHTML = `<i data-lucide="loader" class="w-4 h-4 animate-spin"></i> Paket Oluşturuluyor...`;
+                
+                setTimeout(() => {
+                    const entitiesExportData = [];
+                    Object.values(this.entities).forEach(ent => {
+                        const meshData = {
+                            primitive: ent.assetId ? 'glb' : (ent.type === 'light' ? 'light' : (ent.type === 'camera' ? 'camera' : ent.type)),
+                            p: ent.mesh.position.toArray(),
+                            q: ent.mesh.quaternion.toArray(),
+                            s: ent.mesh.scale.toArray(),
+                            assetId: ent.assetId,
+                            materialId: ent.materialId // Hangi materyali giydiğini kaydet
+                        };
+                        
+                        if(ent.mesh.material && ent.mesh.material.color) meshData.color = ent.mesh.material.color.getHex();
+                        else if(ent.mesh.children[0] && ent.mesh.children[0].material && ent.mesh.children[0].material.color) meshData.color = ent.mesh.children[0].material.color.getHex();
+                        else meshData.color = 0xffffff;
+                        
+                        let bodyData = null;
+                        if(ent.body) {
+                            let shapeType = 'box';
+                            if(ent.body.shapes[0] instanceof CANNON.Sphere) shapeType = 'sphere';
+                            else if(ent.body.shapes[0] instanceof CANNON.Plane) shapeType = 'plane';
+                            bodyData = { mass: ent.body.mass, shapeType };
+                        }
+                        
+                        entitiesExportData.push({ id: ent.id, name: ent.name, type: ent.type, meshData, bodyData, scripts: ent.scripts, audios: ent.audios, props: ent.props });
+                    });
+
+                    // Build Çıktısı (JOLLYSON ROBUST)
+                    // Tarayıcı Ses Politikası Bypass için Start Ekranı var.
+                    const buildHTML = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Kobil3D Oyun</title>
+    <style>body{margin:0;overflow:hidden;background:#000;font-family:sans-serif;} #kobil-ui-layer{position:absolute;inset:0;pointer-events:none;z-index:20;} #kobil-ui-layer > * { pointer-events: auto; }
+    #kobil-start-screen{position:absolute;inset:0;background:rgba(0,0,0,0.9);z-index:100;display:flex;align-items:center;justify-content:center;color:white;cursor:pointer;flex-direction:column;}
+    #kobil-start-screen h1{font-size:40px;margin-bottom:10px;} #kobil-start-screen p{color:#888;}
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+                "cannon-es": "https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js"
+            }
+        }
+    <\/script>
+</head>
+<body>
+    <div id="kobil-start-screen"><h1>OYUNA BAŞLA</h1><p>Motor Seslerini & Modellerini Yüklemek İçin Tıklayın</p></div>
+    <div id="canvas-container" style="width:100vw; height:100vh;"></div>
+    <div id="kobil-ui-layer"></div>
+    <style id="kobil-ui-styles"></style>
+    
+    <script type="module">
+        import * as THREE from 'three';
+        import * as CANNON from 'cannon-es';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        window.EngineInput = ${window.EngineInput.toString()}; window.EngineInput.keys = {}; window.EngineInput.init();
+        window.EngineTime = ${window.EngineTime.toString()}; window.EngineTime.clock = new THREE.Clock();
+        window.BlueprintInterpreter = ${window.BlueprintInterpreter.toString()};
+        
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111317);
+        scene.fog = new THREE.Fog(0x111317, 20, 100);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        
+        let camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({antialias:true});
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+        
+        const physicsWorld = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.81, 0) });
+        
+        const entitiesData = ${JSON.stringify(entitiesExportData)};
+        const assetsData = ${JSON.stringify(this.assets)};
+        
+        window.Engine = { Input: window.EngineInput, Time: window.EngineTime, assets: assetsData };
+        const entities = {};
+        const activeScriptInstances = [];
+        
+        const loader = new GLTFLoader();
+        const texLoader = new THREE.TextureLoader();
+        let allHTML = ''; let allCSS = '';
+        
+        async function initGame() {
+            document.getElementById('kobil-start-screen').style.display = 'none';
+            
+            for(const entData of entitiesData) {
+                let mesh;
+                if(entData.type === 'camera') {
+                    camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 100);
+                    mesh = new THREE.Group(); mesh.add(camera);
+                } else if(entData.type === 'light') {
+                    if(entData.name.includes('Güneş')) { mesh = new THREE.DirectionalLight(0xffffff, 2); mesh.castShadow = true; } 
+                    else { mesh = new THREE.PointLight(0xffaa00, 10, 20); }
+                } else if(entData.meshData.primitive === 'glb') {
+                    const asset = assetsData.models[entData.meshData.assetId];
+                    if(asset) {
+                        const gltf = await new Promise(res => loader.load(asset.data, res));
+                        mesh = gltf.scene;
+                    } else mesh = new THREE.Group();
+                } else {
+                    let geo;
+                    if(entData.meshData.primitive === 'cube') geo = new THREE.BoxGeometry(1,1,1);
+                    else if(entData.meshData.primitive === 'sphere') geo = new THREE.SphereGeometry(0.5,32,32);
+                    else if(entData.meshData.primitive === 'plane') geo = new THREE.PlaneGeometry(50,50);
+                    
+                    let mat = new THREE.MeshStandardMaterial({color: 0xffffff});
+                    if(entData.meshData.materialId && assetsData.materials[entData.meshData.materialId]) {
+                        const mAsset = assetsData.materials[entData.meshData.materialId];
+                        if(mAsset.textureData) {
+                            mat = new THREE.MeshStandardMaterial({map: texLoader.load(mAsset.textureData), color:0xffffff});
+                        } else {
+                            mat.color.setHex(mAsset.color);
+                        }
+                    } else if(entData.meshData.color) {
+                        mat.color.setHex(entData.meshData.color);
+                    }
+                    mesh = new THREE.Mesh(geo, mat);
+                    mesh.castShadow = true; mesh.receiveShadow = true;
+                }
+                
+                mesh.position.fromArray(entData.meshData.p);
+                mesh.quaternion.fromArray(entData.meshData.q);
+                mesh.scale.fromArray(entData.meshData.s);
+                scene.add(mesh);
+                
+                let body = null;
+                if(entData.bodyData) {
+                    let shape = entData.bodyData.shapeType === 'box' ? new CANNON.Box(new CANNON.Vec3(0.5*mesh.scale.x,0.5*mesh.scale.y,0.5*mesh.scale.z)) : 
+                                (entData.bodyData.shapeType === 'plane' ? new CANNON.Plane() : new CANNON.Sphere(0.5*mesh.scale.x));
+                    body = new CANNON.Body({ mass: entData.bodyData.mass, shape, position: new CANNON.Vec3().copy(mesh.position) });
+                    body.quaternion.copy(mesh.quaternion);
+                    physicsWorld.addBody(body);
+                }
+                
+                const runtimeEnt = { mesh, body, name: entData.name, audioElements: [] };
+                entities[entData.id] = runtimeEnt;
+                
+                // SESLERİ OLUŞTUR VE BAŞLAT
+                if(entData.audios) {
+                    entData.audios.forEach(aud => {
+                        const asset = assetsData.audio[aud.assetId];
+                        if(asset && asset.data) {
+                            const htmlAudio = new Audio(asset.data);
+                            htmlAudio.volume = aud.volume;
+                            htmlAudio.loop = aud.loop;
+                            if(aud.autoplay) htmlAudio.play();
+                            runtimeEnt.audioElements.push(htmlAudio);
+                        }
+                    });
+                }
+                
+                entData.scripts.forEach(sc => {
+                    if(sc.type === 'js' || sc.type === 'code') {
+                        if(sc.html) allHTML += sc.html;
+                        if(sc.css) allCSS += sc.css;
+                        const ScriptClass = new Function('return (function(Engine, THREE, CANNON){' + (sc.js || sc.code) + '})')()(window.Engine, THREE, CANNON);
+                        const inst = new ScriptClass();
+                        inst.entity = runtimeEnt; inst.mesh = mesh; inst.body = body;
+                        activeScriptInstances.push(inst);
+                    } else if(sc.type === 'blueprint') {
+                        const bpInst = new window.BlueprintInterpreter(sc.bpData, runtimeEnt);
+                        activeScriptInstances.push(bpInst);
+                    }
+                });
+            }
+            
+            document.getElementById('kobil-ui-layer').innerHTML = allHTML;
+            document.getElementById('kobil-ui-styles').innerHTML = allCSS;
+            
+            activeScriptInstances.forEach(inst => { if(inst.start) inst.start(); });
+            
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+            
+            animate();
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            window.EngineTime.update(); const dt = window.EngineTime.deltaTime;
+            
+            physicsWorld.step(1/60, dt, 3);
+            
+            Object.values(entities).forEach(ent => {
+                if (ent.body && ent.body.mass > 0) { ent.mesh.position.copy(ent.body.position); ent.mesh.quaternion.copy(ent.body.quaternion); }
+            });
+            
+            activeScriptInstances.forEach(inst => { if(inst.update) inst.update(dt); });
+            
+            Object.values(entities).forEach(ent => {
+                if (ent.body && ent.body.mass === 0) { ent.body.position.copy(ent.mesh.position); ent.body.quaternion.copy(ent.mesh.quaternion); }
+            });
+            
+            renderer.render(scene, camera);
+        }
+        
+        document.getElementById('kobil-start-screen').addEventListener('click', initGame);
+    <\/script>
+</body>
+</html>`;
+
+                    const blob = new Blob([buildHTML], { type: 'text/html' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'Kobil3D_Oyunum.html';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    
+                    btn.innerHTML = oldText;
+                    lucide.createIcons({root: btn.parentElement});
+                }, 500);
             }
         };
-
-        // Drag Drop onto Canvas
-        document.getElementById('canvas-container').addEventListener('dragover', e => e.preventDefault());
-        document.getElementById('canvas-container').addEventListener('drop', e => {
-            e.preventDefault();
-            const type = e.dataTransfer.getData('type'); const id = e.dataTransfer.getData('id');
-            if(!type || !id) return;
-
-            const container = document.getElementById('canvas-container'); const rect = container.getBoundingClientRect();
-            Engine.mouse.x = ((e.clientX - rect.left) / container.clientWidth) * 2 - 1;
-            Engine.mouse.y = -((e.clientY - rect.top) / container.clientHeight) * 2 - 1;
-            
-            Engine.raycaster.setFromCamera(Engine.mouse, Engine.camera);
-            
-            if (type === 'material') {
-                const meshes = Object.values(Engine.entities).filter(ent=>!['light','camera'].includes(ent.type)).map(ent => ent.mesh);
-                const intersects = Engine.raycaster.intersectObjects(meshes, true);
-                if(intersects.length > 0) {
-                    let obj = intersects[0].object; while(obj.parent && obj.parent !== Engine.scene && !obj.userData.entityId) obj = obj.parent;
-                    const mat = Engine.assets.materials[id];
-                    obj.traverse(c => { if(c.isMesh) c.material = new THREE.MeshStandardMaterial({color: mat.color}); });
-                }
-            } else if (type === 'model') {
-                Engine.addPrimitive(Engine.assets.models[id].primitive);
-            }
-        });
     </script>
 </body>
 </html>
